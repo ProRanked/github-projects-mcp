@@ -9,10 +9,10 @@
     "dev": "tsx src/dev.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": ["mcp", "github", "projects", "graphql", "api"],
+  "author": "ProRanked",
+  "license": "MIT",
+  "description": "MCP server for interacting with GitHub Projects via GraphQL API",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@octokit/graphql": "^9.0.1",

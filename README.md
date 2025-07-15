@@ -165,6 +165,10 @@ The server is built with:
 - @octokit/graphql for GitHub GraphQL API access
 - dotenv for environment configuration
 
+## Author
+
+Created by [ProRanked](https://github.com/ProRanked)
+
 ## License
 
-ISC
+MIT License - see [LICENSE](LICENSE) file for details
