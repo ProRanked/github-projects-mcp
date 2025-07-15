@@ -15,9 +15,15 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 
+// GitHub supports both 'token' (classic) and 'Bearer' (fine-grained) formats
+// If the token starts with 'github_pat_' it's a fine-grained token, otherwise classic
+const authHeader = GITHUB_TOKEN.startsWith('github_pat_') 
+  ? `Bearer ${GITHUB_TOKEN}`
+  : `token ${GITHUB_TOKEN}`;
+
 const graphqlWithAuth = graphql.defaults({
   headers: {
-    authorization: `token ${GITHUB_TOKEN}`,
+    authorization: authHeader,
   },
 });
 
