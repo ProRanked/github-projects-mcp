@@ -1173,7 +1173,7 @@ class GitHubProjectsServer {
     }
 
     // Build update input dynamically
-    const updateInput: any = { issueId };
+    const updateInput: any = { id: issueId };
     if (title !== undefined) updateInput.title = title;
     if (body !== undefined) updateInput.body = body;
     if (state !== undefined) updateInput.state = state.toUpperCase();
