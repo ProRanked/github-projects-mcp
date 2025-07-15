@@ -219,6 +219,10 @@ class GitHubProjectsServer {
                 type: 'number',
                 description: 'Milestone number (optional)',
               },
+              parentIssueNumber: {
+                type: 'number',
+                description: 'Parent issue number to link this issue to (optional)',
+              },
             },
             required: ['owner', 'repo', 'title'],
           },
@@ -372,6 +376,60 @@ class GitHubProjectsServer {
             required: ['owner', 'repo'],
           },
         },
+        {
+          name: 'link_issues',
+          description: 'Create parent-child relationship between issues (Epic > Feature > Story/Task)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              parentIssueNumber: {
+                type: 'number',
+                description: 'Parent issue number (e.g., Epic or Feature)',
+              },
+              childIssueNumber: {
+                type: 'number',
+                description: 'Child issue number to link',
+              },
+              linkType: {
+                type: 'string',
+                enum: ['tracks', 'blocks', 'related'],
+                description: 'Type of relationship (default: tracks for parent-child)',
+                default: 'tracks',
+              },
+            },
+            required: ['owner', 'repo', 'parentIssueNumber', 'childIssueNumber'],
+          },
+        },
+        {
+          name: 'get_issue_hierarchy',
+          description: 'Get the full hierarchy of an issue (parents and children)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              issueNumber: {
+                type: 'number',
+                description: 'Issue number to get hierarchy for',
+              },
+            },
+            required: ['owner', 'repo', 'issueNumber'],
+          },
+        },
       ],
     }));
 
@@ -402,6 +460,10 @@ class GitHubProjectsServer {
             return await this.getIssue(args);
           case 'ensure_labels':
             return await this.ensureLabels(args);
+          case 'link_issues':
+            return await this.linkIssues(args);
+          case 'get_issue_hierarchy':
+            return await this.getIssueHierarchy(args);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -916,7 +978,7 @@ class GitHubProjectsServer {
   }
 
   private async createIssue(args: any) {
-    let { owner, repo, title, body, labels = [], assignees, milestone } = args;
+    let { owner, repo, title, body, labels = [], assignees, milestone, parentIssueNumber } = args;
     
     // Ensure owner is lowercase
     owner = owner.toLowerCase();
@@ -1053,12 +1115,35 @@ class GitHubProjectsServer {
     };
 
     const result: any = await graphqlWithAuth(mutation, variables);
+    const createdIssue = result.createIssue.issue;
+
+    // Link to parent issue if specified
+    if (parentIssueNumber) {
+      try {
+        await this.linkIssues({
+          owner,
+          repo,
+          parentIssueNumber,
+          childIssueNumber: createdIssue.number,
+          linkType: 'tracks',
+        });
+        
+        // Add parent info to the response
+        createdIssue.parentIssue = {
+          number: parentIssueNumber,
+          relationship: 'tracks',
+        };
+      } catch (linkError) {
+        // Include link error in response but don't fail the whole operation
+        createdIssue.linkError = linkError instanceof Error ? linkError.message : String(linkError);
+      }
+    }
 
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(result.createIssue.issue, null, 2),
+          text: JSON.stringify(createdIssue, null, 2),
         },
       ],
     };
@@ -1448,6 +1533,292 @@ class GitHubProjectsServer {
         {
           type: 'text',
           text: JSON.stringify(results, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async linkIssues(args: any) {
+    let { owner, repo, parentIssueNumber, childIssueNumber, linkType = 'tracks' } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // First, add a comment in the parent issue referencing the child
+    const parentComment = linkType === 'tracks' 
+      ? `Tracks #${childIssueNumber}`
+      : linkType === 'blocks'
+      ? `Blocks #${childIssueNumber}`
+      : `Related to #${childIssueNumber}`;
+    
+    // Get parent issue ID
+    const parentQuery = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            id
+            title
+            labels(first: 10) {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      }
+    `;
+    const parentResult: any = await graphqlWithAuth(parentQuery, { owner, repo, number: parentIssueNumber });
+    const parentIssueId = parentResult.repository?.issue?.id;
+    const parentIssueTitle = parentResult.repository?.issue?.title;
+    
+    if (!parentIssueId) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Parent issue not found');
+    }
+    
+    // Get child issue ID
+    const childQuery = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            id
+            title
+            body
+          }
+        }
+      }
+    `;
+    const childResult: any = await graphqlWithAuth(childQuery, { owner, repo, number: childIssueNumber });
+    const childIssueId = childResult.repository?.issue?.id;
+    const childIssueTitle = childResult.repository?.issue?.title;
+    const childIssueBody = childResult.repository?.issue?.body || '';
+    
+    if (!childIssueId) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Child issue not found');
+    }
+    
+    // Add comment to parent issue
+    const addParentCommentMutation = `
+      mutation($issueId: ID!, $body: String!) {
+        addComment(input: {subjectId: $issueId, body: $body}) {
+          commentEdge {
+            node {
+              id
+            }
+          }
+        }
+      }
+    `;
+    
+    await graphqlWithAuth(addParentCommentMutation, {
+      issueId: parentIssueId,
+      body: parentComment,
+    });
+    
+    // Add comment to child issue with parent reference
+    const childComment = linkType === 'tracks'
+      ? `Tracked by #${parentIssueNumber}`
+      : linkType === 'blocks'
+      ? `Blocked by #${parentIssueNumber}`
+      : `Related to #${parentIssueNumber}`;
+    
+    await graphqlWithAuth(addParentCommentMutation, {
+      issueId: childIssueId,
+      body: childComment,
+    });
+    
+    // Update child issue body to include parent reference if it's a tracks relationship
+    if (linkType === 'tracks') {
+      const parentRef = `\n\n---\n**Parent:** #${parentIssueNumber} - ${parentIssueTitle}`;
+      const updatedBody = childIssueBody.includes('**Parent:**') 
+        ? childIssueBody.replace(/\n\n---\n\*\*Parent:\*\*.+/, parentRef)
+        : childIssueBody + parentRef;
+      
+      const updateBodyMutation = `
+        mutation($issueId: ID!, $body: String!) {
+          updateIssue(input: {id: $issueId, body: $body}) {
+            issue {
+              id
+            }
+          }
+        }
+      `;
+      
+      await graphqlWithAuth(updateBodyMutation, {
+        issueId: childIssueId,
+        body: updatedBody,
+      });
+    }
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            parent: {
+              number: parentIssueNumber,
+              title: parentIssueTitle,
+            },
+            child: {
+              number: childIssueNumber,
+              title: childIssueTitle,
+            },
+            relationship: linkType,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async getIssueHierarchy(args: any) {
+    let { owner, repo, issueNumber } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // Get the issue and its comments to find relationships
+    const query = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            id
+            number
+            title
+            body
+            state
+            labels(first: 10) {
+              nodes {
+                name
+              }
+            }
+            comments(first: 100) {
+              nodes {
+                body
+                author {
+                  login
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    
+    const result: any = await graphqlWithAuth(query, { owner, repo, number: issueNumber });
+    const issue = result.repository?.issue;
+    
+    if (!issue) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Issue not found');
+    }
+    
+    // Extract relationships from comments and body
+    const hierarchy: any = {
+      current: {
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        labels: issue.labels.nodes.map((l: any) => l.name),
+        type: this.detectIssueType(issue.title, issue.body),
+      },
+      parents: [],
+      children: [],
+    };
+    
+    // Find parent references in body
+    const parentMatch = issue.body?.match(/\*\*Parent:\*\* #(\d+)/);
+    if (parentMatch) {
+      const parentNumber = parseInt(parentMatch[1]);
+      try {
+        const parentQuery = `
+          query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              issue(number: $number) {
+                number
+                title
+                state
+                labels(first: 5) {
+                  nodes {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        `;
+        const parentResult: any = await graphqlWithAuth(parentQuery, { owner, repo, number: parentNumber });
+        if (parentResult.repository?.issue) {
+          hierarchy.parents.push({
+            number: parentResult.repository.issue.number,
+            title: parentResult.repository.issue.title,
+            state: parentResult.repository.issue.state,
+            labels: parentResult.repository.issue.labels.nodes.map((l: any) => l.name),
+            type: this.detectIssueType(parentResult.repository.issue.title, ''),
+          });
+        }
+      } catch (e) {
+        // Parent might be deleted or inaccessible
+      }
+    }
+    
+    // Find child references in comments
+    const childPattern = /Tracks #(\d+)/g;
+    const comments = issue.comments.nodes || [];
+    const childNumbers = new Set<number>();
+    
+    for (const comment of comments) {
+      let match;
+      while ((match = childPattern.exec(comment.body)) !== null) {
+        childNumbers.add(parseInt(match[1]));
+      }
+    }
+    
+    // Fetch details for each child
+    for (const childNumber of childNumbers) {
+      try {
+        const childQuery = `
+          query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              issue(number: $number) {
+                number
+                title
+                state
+                labels(first: 5) {
+                  nodes {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        `;
+        const childResult: any = await graphqlWithAuth(childQuery, { owner, repo, number: childNumber });
+        if (childResult.repository?.issue) {
+          hierarchy.children.push({
+            number: childResult.repository.issue.number,
+            title: childResult.repository.issue.title,
+            state: childResult.repository.issue.state,
+            labels: childResult.repository.issue.labels.nodes.map((l: any) => l.name),
+            type: this.detectIssueType(childResult.repository.issue.title, ''),
+          });
+        }
+      } catch (e) {
+        // Child might be deleted or inaccessible
+      }
+    }
+    
+    // Sort children by type (features before stories/tasks)
+    const typeOrder = { epic: 0, feature: 1, story: 2, task: 3, bug: 4, documentation: 5 };
+    hierarchy.children.sort((a: any, b: any) => {
+      const aOrder = typeOrder[a.type as keyof typeof typeOrder] ?? 6;
+      const bOrder = typeOrder[b.type as keyof typeof typeOrder] ?? 6;
+      return aOrder - bOrder;
+    });
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(hierarchy, null, 2),
         },
       ],
     };

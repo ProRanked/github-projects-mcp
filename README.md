@@ -15,9 +15,11 @@ An MCP (Model Context Protocol) server that provides tools for interacting with 
 ### Issue Management
 - Create new issues with automatic type detection and labeling
 - Smart detection of issue types: Epic, Feature, Bug, Task, Story, Documentation
+- Create parent-child relationships between issues (Epic > Feature > Story/Task)
 - Update existing issues (title, body, state, labels, assignees, milestone)
 - List issues with filtering options (state, labels, assignee)
 - Get detailed issue information including comments and project associations
+- View complete issue hierarchy (parents and children)
 - Ensure standard issue type labels exist in repositories
 
 ## Setup
@@ -112,6 +114,7 @@ Parameters:
 - `labels` (optional): Array of label names to assign
 - `assignees` (optional): Array of usernames to assign
 - `milestone` (optional): Milestone number to assign
+- `parentIssueNumber` (optional): Parent issue number to link this issue to
 
 **Automatic Type Detection**: The tool analyzes the title and body to automatically add appropriate labels:
 - **Epic**: Large initiatives, milestones, parent tasks
@@ -166,6 +169,24 @@ Parameters:
   - `description` (optional): Label description
 
 If no labels are provided, creates default issue type labels (epic, feature, bug, task, story, documentation).
+
+##### link_issues
+Create parent-child relationships between issues.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `parentIssueNumber` (required): Parent issue number (e.g., Epic or Feature)
+- `childIssueNumber` (required): Child issue number to link
+- `linkType` (optional): Relationship type - "tracks" (default), "blocks", or "related"
+
+##### get_issue_hierarchy
+Get the complete hierarchy of an issue showing all parents and children.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `issueNumber` (required): Issue number to get hierarchy for
 
 ## Integration with Claude Desktop
 
@@ -262,7 +283,41 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-7. Update an issue:
+7. Create a feature under an epic:
+   ```
+   Tool: create_issue
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "title": "Feature: Implement login functionality",
+     "body": "Implement secure login with JWT tokens",
+     "parentIssueNumber": 100
+   }
+   ```
+
+8. Link existing issues:
+   ```
+   Tool: link_issues
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "parentIssueNumber": 100,
+     "childIssueNumber": 101,
+     "linkType": "tracks"
+   }
+   ```
+
+9. View issue hierarchy:
+   ```
+   Tool: get_issue_hierarchy
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "issueNumber": 100
+   }
+   ```
+
+10. Update an issue:
    ```
    Tool: update_issue
    Arguments: {
@@ -274,7 +329,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-8. List open issues with a specific label:
+11. List open issues with a specific label:
    ```
    Tool: list_issues
    Arguments: {
@@ -285,7 +340,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-9. Add an issue to a project:
+12. Add an issue to a project:
    ```
    Tool: create_project_item
    Arguments: {
