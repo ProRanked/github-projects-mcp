@@ -48,7 +48,6 @@ Parameters:
 - `owner` (required): Repository owner or organization name
 - `title` (required): Project title
 - `repo` (optional): Repository name (omit for organization project)
-- `body` (optional): Project description
 
 #### list_projects
 List GitHub projects for a repository or organization.
@@ -124,8 +123,7 @@ Create your token at: https://github.com/settings/tokens
    Arguments: {
      "owner": "octocat",
      "repo": "hello-world",
-     "title": "My New Project",
-     "body": "A project to track development tasks"
+     "title": "My New Project"
    }
    ```
 

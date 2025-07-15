@@ -170,10 +170,6 @@ class GitHubProjectsServer {
                 type: 'string',
                 description: 'Project title',
               },
-              body: {
-                type: 'string',
-                description: 'Project description (optional)',
-              },
             },
             required: ['owner', 'title'],
           },
@@ -545,7 +541,7 @@ class GitHubProjectsServer {
   }
 
   private async createProject(args: any) {
-    const { owner, repo, title, body } = args;
+    const { owner, repo, title } = args;
 
     let mutation;
     let variables: any;
@@ -567,11 +563,10 @@ class GitHubProjectsServer {
       }
 
       mutation = `
-        mutation($repositoryId: ID!, $title: String!, $body: String) {
+        mutation($repositoryId: ID!, $title: String!) {
           createProjectV2(input: {
             repositoryId: $repositoryId,
-            title: $title,
-            shortDescription: $body
+            title: $title
           }) {
             projectV2 {
               id
@@ -584,7 +579,7 @@ class GitHubProjectsServer {
           }
         }
       `;
-      variables = { repositoryId, title, body };
+      variables = { repositoryId, title };
     } else {
       // Create organization project
       const orgQuery = `
@@ -602,11 +597,10 @@ class GitHubProjectsServer {
       }
 
       mutation = `
-        mutation($ownerId: ID!, $title: String!, $body: String) {
+        mutation($ownerId: ID!, $title: String!) {
           createProjectV2(input: {
             ownerId: $ownerId,
-            title: $title,
-            shortDescription: $body
+            title: $title
           }) {
             projectV2 {
               id
@@ -619,7 +613,7 @@ class GitHubProjectsServer {
           }
         }
       `;
-      variables = { ownerId, title, body };
+      variables = { ownerId, title };
     }
 
     const result: any = await graphqlWithAuth(mutation, variables);
