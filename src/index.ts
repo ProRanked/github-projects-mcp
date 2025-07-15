@@ -183,6 +183,195 @@ class GitHubProjectsServer {
             required: ['owner', 'title'],
           },
         },
+        {
+          name: 'create_issue',
+          description: 'Create a new issue in a repository',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              title: {
+                type: 'string',
+                description: 'Issue title',
+              },
+              body: {
+                type: 'string',
+                description: 'Issue body/description (optional)',
+              },
+              labels: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Labels to assign (optional)',
+              },
+              assignees: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Users to assign (optional)',
+              },
+              milestone: {
+                type: 'number',
+                description: 'Milestone number (optional)',
+              },
+            },
+            required: ['owner', 'repo', 'title'],
+          },
+        },
+        {
+          name: 'update_issue',
+          description: 'Update an existing issue',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              issueNumber: {
+                type: 'number',
+                description: 'Issue number',
+              },
+              title: {
+                type: 'string',
+                description: 'New title (optional)',
+              },
+              body: {
+                type: 'string',
+                description: 'New body (optional)',
+              },
+              state: {
+                type: 'string',
+                enum: ['open', 'closed'],
+                description: 'Issue state (optional)',
+              },
+              labels: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Replace all labels (optional)',
+              },
+              assignees: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Replace all assignees (optional)',
+              },
+              milestone: {
+                type: 'number',
+                description: 'Milestone number or null to remove (optional)',
+              },
+            },
+            required: ['owner', 'repo', 'issueNumber'],
+          },
+        },
+        {
+          name: 'list_issues',
+          description: 'List issues in a repository',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              state: {
+                type: 'string',
+                enum: ['open', 'closed', 'all'],
+                description: 'Filter by state (default: open)',
+                default: 'open',
+              },
+              labels: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Filter by labels (optional)',
+              },
+              assignee: {
+                type: 'string',
+                description: 'Filter by assignee username (optional)',
+              },
+              first: {
+                type: 'number',
+                description: 'Number of issues to return (default: 20)',
+                default: 20,
+              },
+            },
+            required: ['owner', 'repo'],
+          },
+        },
+        {
+          name: 'get_issue',
+          description: 'Get details of a specific issue',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              issueNumber: {
+                type: 'number',
+                description: 'Issue number',
+              },
+            },
+            required: ['owner', 'repo', 'issueNumber'],
+          },
+        },
+        {
+          name: 'ensure_labels',
+          description: 'Ensure standard issue type labels exist in the repository',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              labels: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: {
+                      type: 'string',
+                      description: 'Label name',
+                    },
+                    color: {
+                      type: 'string',
+                      description: 'Label color (hex without #)',
+                    },
+                    description: {
+                      type: 'string',
+                      description: 'Label description',
+                    },
+                  },
+                  required: ['name', 'color'],
+                },
+                description: 'Labels to ensure exist (optional, uses defaults if not provided)',
+              },
+            },
+            required: ['owner', 'repo'],
+          },
+        },
       ],
     }));
 
@@ -203,6 +392,16 @@ class GitHubProjectsServer {
             return await this.updateProjectItemField(args);
           case 'create_project':
             return await this.createProject(args);
+          case 'create_issue':
+            return await this.createIssue(args);
+          case 'update_issue':
+            return await this.updateIssue(args);
+          case 'list_issues':
+            return await this.listIssues(args);
+          case 'get_issue':
+            return await this.getIssue(args);
+          case 'ensure_labels':
+            return await this.ensureLabels(args);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -233,7 +432,10 @@ class GitHubProjectsServer {
   }
 
   private async listProjects(args: any) {
-    const { owner, repo, projectsType = 'repository' } = args;
+    let { owner, repo, projectsType = 'repository' } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
 
     let query;
     let variables;
@@ -296,7 +498,10 @@ class GitHubProjectsServer {
   }
 
   private async getProject(args: any) {
-    const { projectNumber, owner, repo } = args;
+    let { projectNumber, owner, repo } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
 
     let query;
     let variables;
@@ -562,7 +767,10 @@ class GitHubProjectsServer {
   }
 
   private async createProject(args: any) {
-    const { owner, repo, title } = args;
+    let { owner, repo, title } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
 
     let mutation;
     let variables: any;
@@ -644,6 +852,602 @@ class GitHubProjectsServer {
         {
           type: 'text',
           text: JSON.stringify(result.createProjectV2.projectV2, null, 2),
+        },
+      ],
+    };
+  }
+
+  private detectIssueType(title: string, body?: string): string | null {
+    const combinedText = `${title} ${body || ''}`.toLowerCase();
+    
+    // Epic detection patterns
+    if (combinedText.includes('epic') || 
+        combinedText.includes('initiative') || 
+        combinedText.includes('milestone') ||
+        combinedText.includes('parent')) {
+      return 'epic';
+    }
+    
+    // Feature detection patterns
+    if (combinedText.includes('feature') || 
+        combinedText.includes('enhancement') || 
+        combinedText.includes('new functionality') ||
+        combinedText.includes('add support') ||
+        combinedText.includes('implement')) {
+      return 'feature';
+    }
+    
+    // Bug detection patterns
+    if (combinedText.includes('bug') || 
+        combinedText.includes('fix') || 
+        combinedText.includes('error') ||
+        combinedText.includes('issue') ||
+        combinedText.includes('broken') ||
+        combinedText.includes('crash')) {
+      return 'bug';
+    }
+    
+    // Task detection patterns
+    if (combinedText.includes('task') || 
+        combinedText.includes('chore') || 
+        combinedText.includes('refactor') ||
+        combinedText.includes('update') ||
+        combinedText.includes('clean')) {
+      return 'task';
+    }
+    
+    // Story detection patterns
+    if (combinedText.includes('story') || 
+        combinedText.includes('user story') || 
+        combinedText.includes('as a user') ||
+        combinedText.includes('i want')) {
+      return 'story';
+    }
+    
+    // Documentation detection patterns
+    if (combinedText.includes('documentation') || 
+        combinedText.includes('docs') || 
+        combinedText.includes('readme') ||
+        combinedText.includes('guide')) {
+      return 'documentation';
+    }
+    
+    return null;
+  }
+
+  private async createIssue(args: any) {
+    let { owner, repo, title, body, labels = [], assignees, milestone } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // Detect issue type and add appropriate label
+    const issueType = this.detectIssueType(title, body);
+    const autoLabels = [...labels];
+    
+    if (issueType && !autoLabels.includes(issueType)) {
+      autoLabels.push(issueType);
+    }
+
+    // First, get repository ID
+    const repoQuery = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          id
+        }
+      }
+    `;
+    const repoResult: any = await graphqlWithAuth(repoQuery, { owner, repo });
+    const repositoryId = repoResult.repository?.id;
+
+    if (!repositoryId) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Repository not found');
+    }
+
+    // Build the mutation
+    const mutation = `
+      mutation($repositoryId: ID!, $title: String!, $body: String, $labelIds: [ID!], $assigneeIds: [ID!], $milestoneId: ID) {
+        createIssue(input: {
+          repositoryId: $repositoryId,
+          title: $title,
+          body: $body,
+          labelIds: $labelIds,
+          assigneeIds: $assigneeIds,
+          milestoneId: $milestoneId
+        }) {
+          issue {
+            id
+            number
+            title
+            body
+            state
+            url
+            createdAt
+            updatedAt
+            author {
+              login
+            }
+            labels(first: 10) {
+              nodes {
+                name
+                color
+              }
+            }
+            assignees(first: 10) {
+              nodes {
+                login
+              }
+            }
+            milestone {
+              title
+              number
+            }
+          }
+        }
+      }
+    `;
+
+    // Convert label names to IDs if provided
+    let labelIds = null;
+    if (autoLabels && autoLabels.length > 0) {
+      const labelsQuery = `
+        query($owner: String!, $repo: String!) {
+          repository(owner: $owner, name: $repo) {
+            labels(first: 100) {
+              nodes {
+                id
+                name
+              }
+            }
+          }
+        }
+      `;
+      const labelsResult: any = await graphqlWithAuth(labelsQuery, { owner, repo });
+      const repoLabels = labelsResult.repository?.labels?.nodes || [];
+      labelIds = autoLabels.map((labelName: string) => {
+        const label = repoLabels.find((l: any) => l.name === labelName);
+        return label?.id;
+      }).filter(Boolean);
+    }
+
+    // Convert assignee usernames to IDs if provided
+    let assigneeIds = null;
+    if (assignees && assignees.length > 0) {
+      assigneeIds = await Promise.all(assignees.map(async (username: string) => {
+        const userQuery = `
+          query($username: String!) {
+            user(login: $username) {
+              id
+            }
+          }
+        `;
+        const userResult: any = await graphqlWithAuth(userQuery, { username });
+        return userResult.user?.id;
+      }));
+      assigneeIds = assigneeIds.filter(Boolean);
+    }
+
+    // Get milestone ID if provided
+    let milestoneId = null;
+    if (milestone) {
+      const milestoneQuery = `
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            milestone(number: $number) {
+              id
+            }
+          }
+        }
+      `;
+      const milestoneResult: any = await graphqlWithAuth(milestoneQuery, { owner, repo, number: milestone });
+      milestoneId = milestoneResult.repository?.milestone?.id;
+    }
+
+    const variables = {
+      repositoryId,
+      title,
+      body: body || null,
+      labelIds,
+      assigneeIds,
+      milestoneId,
+    };
+
+    const result: any = await graphqlWithAuth(mutation, variables);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result.createIssue.issue, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async updateIssue(args: any) {
+    let { owner, repo, issueNumber, title, body, state, labels, assignees, milestone } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+
+    // Get issue ID
+    const issueQuery = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            id
+          }
+        }
+      }
+    `;
+    const issueResult: any = await graphqlWithAuth(issueQuery, { owner, repo, number: issueNumber });
+    const issueId = issueResult.repository?.issue?.id;
+
+    if (!issueId) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Issue not found');
+    }
+
+    // Build update input dynamically
+    const updateInput: any = { issueId };
+    if (title !== undefined) updateInput.title = title;
+    if (body !== undefined) updateInput.body = body;
+    if (state !== undefined) updateInput.state = state.toUpperCase();
+
+    // Handle labels if provided
+    if (labels !== undefined) {
+      const labelsQuery = `
+        query($owner: String!, $repo: String!) {
+          repository(owner: $owner, name: $repo) {
+            labels(first: 100) {
+              nodes {
+                id
+                name
+              }
+            }
+          }
+        }
+      `;
+      const labelsResult: any = await graphqlWithAuth(labelsQuery, { owner, repo });
+      const repoLabels = labelsResult.repository?.labels?.nodes || [];
+      updateInput.labelIds = labels.map((labelName: string) => {
+        const label = repoLabels.find((l: any) => l.name === labelName);
+        return label?.id;
+      }).filter(Boolean);
+    }
+
+    // Handle assignees if provided
+    if (assignees !== undefined) {
+      updateInput.assigneeIds = await Promise.all(assignees.map(async (username: string) => {
+        const userQuery = `
+          query($username: String!) {
+            user(login: $username) {
+              id
+            }
+          }
+        `;
+        const userResult: any = await graphqlWithAuth(userQuery, { username });
+        return userResult.user?.id;
+      }));
+      updateInput.assigneeIds = updateInput.assigneeIds.filter(Boolean);
+    }
+
+    // Handle milestone if provided
+    if (milestone !== undefined) {
+      if (milestone === null) {
+        updateInput.milestoneId = null;
+      } else {
+        const milestoneQuery = `
+          query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              milestone(number: $number) {
+                id
+              }
+            }
+          }
+        `;
+        const milestoneResult: any = await graphqlWithAuth(milestoneQuery, { owner, repo, number: milestone });
+        updateInput.milestoneId = milestoneResult.repository?.milestone?.id;
+      }
+    }
+
+    const mutation = `
+      mutation($input: UpdateIssueInput!) {
+        updateIssue(input: $input) {
+          issue {
+            id
+            number
+            title
+            body
+            state
+            url
+            updatedAt
+            labels(first: 10) {
+              nodes {
+                name
+                color
+              }
+            }
+            assignees(first: 10) {
+              nodes {
+                login
+              }
+            }
+            milestone {
+              title
+              number
+            }
+          }
+        }
+      }
+    `;
+
+    const result: any = await graphqlWithAuth(mutation, { input: updateInput });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result.updateIssue.issue, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async listIssues(args: any) {
+    let { owner, repo, state = 'open', labels, assignee, first = 20 } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+
+    let stateFilter = '';
+    if (state !== 'all') {
+      stateFilter = `, states: ${state.toUpperCase()}`;
+    }
+
+    let labelsFilter = '';
+    if (labels && labels.length > 0) {
+      labelsFilter = `, labels: ${JSON.stringify(labels)}`;
+    }
+
+    let assigneeFilter = '';
+    if (assignee) {
+      assigneeFilter = `, filterBy: { assignee: "${assignee}" }`;
+    }
+
+    const query = `
+      query($owner: String!, $repo: String!, $first: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issues(first: $first${stateFilter}${labelsFilter}${assigneeFilter}, orderBy: {field: CREATED_AT, direction: DESC}) {
+            nodes {
+              id
+              number
+              title
+              body
+              state
+              url
+              createdAt
+              updatedAt
+              author {
+                login
+              }
+              labels(first: 5) {
+                nodes {
+                  name
+                  color
+                }
+              }
+              assignees(first: 5) {
+                nodes {
+                  login
+                }
+              }
+            }
+            totalCount
+          }
+        }
+      }
+    `;
+
+    const result: any = await graphqlWithAuth(query, { owner, repo, first });
+    const issues = result.repository?.issues || { nodes: [], totalCount: 0 };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(issues, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async getIssue(args: any) {
+    let { owner, repo, issueNumber } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+
+    const query = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            id
+            number
+            title
+            body
+            state
+            url
+            createdAt
+            updatedAt
+            closedAt
+            author {
+              login
+            }
+            labels(first: 10) {
+              nodes {
+                name
+                color
+                description
+              }
+            }
+            assignees(first: 10) {
+              nodes {
+                login
+                name
+              }
+            }
+            milestone {
+              title
+              number
+              description
+              dueOn
+              state
+            }
+            projectItems(first: 10) {
+              nodes {
+                project {
+                  title
+                  number
+                }
+              }
+            }
+            comments(first: 5) {
+              totalCount
+              nodes {
+                author {
+                  login
+                }
+                body
+                createdAt
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const result: any = await graphqlWithAuth(query, { owner, repo, number: issueNumber });
+    const issue = result.repository?.issue;
+
+    if (!issue) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Issue not found');
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(issue, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async ensureLabels(args: any) {
+    let { owner, repo, labels } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // Default labels for issue types
+    const defaultLabels = [
+      { name: 'epic', color: '6B46C1', description: 'Large initiative or milestone' },
+      { name: 'feature', color: '0E8A16', description: 'New feature or enhancement' },
+      { name: 'bug', color: 'D73A4A', description: 'Something isn\'t working' },
+      { name: 'task', color: '0075CA', description: 'General task or chore' },
+      { name: 'story', color: '1D76DB', description: 'User story' },
+      { name: 'documentation', color: '0052CC', description: 'Documentation updates' },
+    ];
+    
+    const labelsToEnsure = labels || defaultLabels;
+    
+    // Get repository ID
+    const repoQuery = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          id
+        }
+      }
+    `;
+    const repoResult: any = await graphqlWithAuth(repoQuery, { owner, repo });
+    const repositoryId = repoResult.repository?.id;
+    
+    if (!repositoryId) {
+      throw new McpError(ErrorCode.InvalidRequest, 'Repository not found');
+    }
+    
+    // Get existing labels
+    const existingLabelsQuery = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          labels(first: 100) {
+            nodes {
+              id
+              name
+            }
+          }
+        }
+      }
+    `;
+    const existingLabelsResult: any = await graphqlWithAuth(existingLabelsQuery, { owner, repo });
+    const existingLabels = existingLabelsResult.repository?.labels?.nodes || [];
+    const existingLabelNames = existingLabels.map((l: any) => l.name.toLowerCase());
+    
+    const results = [];
+    
+    // Create missing labels
+    for (const labelDef of labelsToEnsure) {
+      if (!existingLabelNames.includes(labelDef.name.toLowerCase())) {
+        try {
+          const createLabelMutation = `
+            mutation($repositoryId: ID!, $name: String!, $color: String!, $description: String) {
+              createLabel(input: {
+                repositoryId: $repositoryId,
+                name: $name,
+                color: $color,
+                description: $description
+              }) {
+                label {
+                  id
+                  name
+                  color
+                  description
+                }
+              }
+            }
+          `;
+          
+          const result: any = await graphqlWithAuth(createLabelMutation, {
+            repositoryId,
+            name: labelDef.name,
+            color: labelDef.color,
+            description: labelDef.description,
+          });
+          
+          results.push({
+            action: 'created',
+            label: result.createLabel.label,
+          });
+        } catch (error) {
+          results.push({
+            action: 'error',
+            label: labelDef.name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } else {
+        results.push({
+          action: 'exists',
+          label: labelDef.name,
+        });
+      }
+    }
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(results, null, 2),
         },
       ],
     };

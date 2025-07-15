@@ -4,12 +4,21 @@ An MCP (Model Context Protocol) server that provides tools for interacting with 
 
 ## Features
 
+### Project Management
 - Create new projects for repositories or organizations
 - List projects for repositories and organizations
 - Get detailed project information including fields
 - List items in a project
 - Create new project items from issues/PRs
 - Update project item field values
+
+### Issue Management
+- Create new issues with automatic type detection and labeling
+- Smart detection of issue types: Epic, Feature, Bug, Task, Story, Documentation
+- Update existing issues (title, body, state, labels, assignees, milestone)
+- List issues with filtering options (state, labels, assignee)
+- Get detailed issue information including comments and project associations
+- Ensure standard issue type labels exist in repositories
 
 ## Setup
 
@@ -41,7 +50,9 @@ npm run dev
 
 ### Available Tools
 
-#### create_project
+#### Project Tools
+
+##### create_project
 Create a new GitHub project.
 
 Parameters:
@@ -49,7 +60,7 @@ Parameters:
 - `title` (required): Project title
 - `repo` (optional): Repository name (omit for organization project)
 
-#### list_projects
+##### list_projects
 List GitHub projects for a repository or organization.
 
 Parameters:
@@ -57,7 +68,7 @@ Parameters:
 - `repo` (optional): Repository name (omit for organization projects)
 - `projectsType` (optional): "repository" or "organization" (default: "repository")
 
-#### get_project
+##### get_project
 Get detailed information about a specific project.
 
 Parameters:
@@ -65,21 +76,21 @@ Parameters:
 - `owner` (required): Repository owner or organization name
 - `repo` (optional): Repository name (omit for organization projects)
 
-#### list_project_items
+##### list_project_items
 List items in a GitHub project.
 
 Parameters:
 - `projectId` (required): Project node ID
 - `first` (optional): Number of items to return (default: 20)
 
-#### create_project_item
+##### create_project_item
 Add an existing issue or pull request to a project.
 
 Parameters:
 - `projectId` (required): Project node ID
 - `contentId` (required): Issue or PR node ID
 
-#### update_project_item_field
+##### update_project_item_field
 Update a field value for a project item.
 
 Parameters:
@@ -87,6 +98,74 @@ Parameters:
 - `itemId` (required): Project item node ID
 - `fieldId` (required): Field node ID
 - `value` (required): New value for the field
+
+#### Issue Tools
+
+##### create_issue
+Create a new issue in a repository with automatic type detection.
+
+Parameters:
+- `owner` (required): Repository owner (automatically converted to lowercase)
+- `repo` (required): Repository name
+- `title` (required): Issue title
+- `body` (optional): Issue body/description
+- `labels` (optional): Array of label names to assign
+- `assignees` (optional): Array of usernames to assign
+- `milestone` (optional): Milestone number to assign
+
+**Automatic Type Detection**: The tool analyzes the title and body to automatically add appropriate labels:
+- **Epic**: Large initiatives, milestones, parent tasks
+- **Feature**: New functionality, enhancements, implementations
+- **Bug**: Errors, fixes, crashes, broken functionality
+- **Task**: General tasks, chores, refactoring, updates
+- **Story**: User stories, "as a user" scenarios
+- **Documentation**: Docs, README, guides
+
+##### update_issue
+Update an existing issue.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `issueNumber` (required): Issue number
+- `title` (optional): New title
+- `body` (optional): New body
+- `state` (optional): "open" or "closed"
+- `labels` (optional): Replace all labels with this array
+- `assignees` (optional): Replace all assignees with this array
+- `milestone` (optional): New milestone number (or null to remove)
+
+##### list_issues
+List issues in a repository.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `state` (optional): "open", "closed", or "all" (default: "open")
+- `labels` (optional): Array of labels to filter by
+- `assignee` (optional): Filter by assignee username
+- `first` (optional): Number of issues to return (default: 20)
+
+##### get_issue
+Get detailed information about a specific issue.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `issueNumber` (required): Issue number
+
+##### ensure_labels
+Ensure standard issue type labels exist in the repository.
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `labels` (optional): Array of label definitions with:
+  - `name` (required): Label name
+  - `color` (required): Hex color without #
+  - `description` (optional): Label description
+
+If no labels are provided, creates default issue type labels (epic, feature, bug, task, story, documentation).
 
 ## Integration with Claude Desktop
 
@@ -117,6 +196,8 @@ Create your token at: https://github.com/settings/tokens
 
 ## Example Usage
 
+### Project Examples
+
 1. Create a new project:
    ```
    Tool: create_project
@@ -146,7 +227,65 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-4. Add an issue to a project:
+### Issue Examples
+
+4. Ensure issue type labels exist:
+   ```
+   Tool: ensure_labels
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world"
+   }
+   ```
+
+5. Create a new issue (auto-detects as bug):
+   ```
+   Tool: create_issue
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "title": "Bug: Application crashes on startup",
+     "body": "When I try to start the application, it crashes with error XYZ.",
+     "labels": ["high-priority"],
+     "assignees": ["octocat"]
+   }
+   ```
+
+6. Create an epic:
+   ```
+   Tool: create_issue
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "title": "Epic: Implement user authentication system",
+     "body": "This epic covers the implementation of a complete authentication system including login, registration, and password recovery."
+   }
+   ```
+
+7. Update an issue:
+   ```
+   Tool: update_issue
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "issueNumber": 42,
+     "state": "closed",
+     "labels": ["bug", "fixed"]
+   }
+   ```
+
+8. List open issues with a specific label:
+   ```
+   Tool: list_issues
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "state": "open",
+     "labels": ["bug"]
+   }
+   ```
+
+9. Add an issue to a project:
    ```
    Tool: create_project_item
    Arguments: {
