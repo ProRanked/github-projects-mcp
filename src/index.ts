@@ -27,6 +27,9 @@ const authHeader = cleanToken.startsWith('github_pat_')
 const graphqlWithAuth = graphql.defaults({
   headers: {
     authorization: authHeader,
+    // Enable GitHub beta features and preview schemas
+    'Accept': 'application/vnd.github.v4+json',
+    'X-Github-Next-Global-ID': '1',
   },
 });
 
@@ -456,6 +459,32 @@ class GitHubProjectsServer {
             required: ['owner', 'repo', 'issueNumber'],
           },
         },
+        {
+          name: 'add_sub_issue',
+          description: 'Add a sub-issue relationship using GitHub beta API (creates native parent-child relationship)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              parentIssueNumber: {
+                type: 'number',
+                description: 'Parent issue number',
+              },
+              childIssueNumber: {
+                type: 'number',
+                description: 'Child issue number to add as sub-issue',
+              },
+            },
+            required: ['owner', 'repo', 'parentIssueNumber', 'childIssueNumber'],
+          },
+        },
       ],
     }));
 
@@ -492,6 +521,8 @@ class GitHubProjectsServer {
             return await this.setParent(args);
           case 'get_issue_hierarchy':
             return await this.getIssueHierarchy(args);
+          case 'add_sub_issue':
+            return await this.addSubIssue(args);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -1686,24 +1717,27 @@ class GitHubProjectsServer {
         body: updatedBody,
       });
       
-      // Also update parent issue body to include task list for native GitHub relationships
-      const childTaskItem = `- [ ] #${childIssueNumber}`;
+      // Update parent issue body with GitHub's task list format for native tracking
+      // This creates trackable relationships in GitHub
+      const childTaskItem = `- [ ] #${childIssueNumber} ${childIssueTitle}`;
       let updatedParentBody = parentIssueBody;
       
-      // Check if there's already a "Child Issues" or "Tracks" section
-      const tracksSectionRegex = /## (?:Child Issues|Tracks|Sub-tasks)\n((?:- \[[ x]\] #\d+.*\n)*)/i;
-      const match = updatedParentBody.match(tracksSectionRegex);
+      // Look for existing task list in the body
+      const taskListRegex = /(^|\n)(- \[[ x]\] #\d+.*\n)+/gm;
+      const hasTaskList = taskListRegex.test(updatedParentBody);
       
-      if (match) {
-        // Add to existing section if not already there
-        if (!match[1].includes(`#${childIssueNumber}`)) {
-          const newSection = match[0] + childTaskItem + '\n';
-          updatedParentBody = updatedParentBody.replace(match[0], newSection);
+      if (hasTaskList) {
+        // Check if this child is already in the task list
+        if (!updatedParentBody.includes(`#${childIssueNumber}`)) {
+          // Find the last task item and add after it
+          updatedParentBody = updatedParentBody.replace(taskListRegex, (match: string) => {
+            return match.trimEnd() + '\n' + childTaskItem + '\n';
+          });
         }
       } else {
-        // Add new section at the end
-        const newSection = `\n\n## Sub-tasks\n${childTaskItem}\n`;
-        updatedParentBody = updatedParentBody + newSection;
+        // Add task list at the beginning of the body for better visibility
+        const tasksSection = `### Tasks\n${childTaskItem}\n\n`;
+        updatedParentBody = tasksSection + updatedParentBody;
       }
       
       // Update parent issue body
@@ -1748,6 +1782,117 @@ class GitHubProjectsServer {
       childIssueNumber: issueNumber,
       linkType: 'tracks'
     });
+  }
+
+  private async addSubIssue(args: any) {
+    let { owner, repo, parentIssueNumber, childIssueNumber } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // First, get both issues' node IDs
+    const query = `
+      query($owner: String!, $repo: String!, $parentNumber: Int!, $childNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          parentIssue: issue(number: $parentNumber) {
+            id
+            title
+          }
+          childIssue: issue(number: $childNumber) {
+            id
+            title
+          }
+        }
+      }
+    `;
+    
+    const result: any = await graphqlWithAuth(query, { 
+      owner, 
+      repo, 
+      parentNumber: parentIssueNumber,
+      childNumber: childIssueNumber 
+    });
+    
+    const parentId = result.repository?.parentIssue?.id;
+    const childId = result.repository?.childIssue?.id;
+    const parentTitle = result.repository?.parentIssue?.title;
+    const childTitle = result.repository?.childIssue?.title;
+    
+    if (!parentId || !childId) {
+      throw new McpError(
+        ErrorCode.InvalidRequest, 
+        !parentId ? 'Parent issue not found' : 'Child issue not found'
+      );
+    }
+    
+    try {
+      // Try using GitHub's beta addSubIssue mutation
+      const addSubIssueMutation = `
+        mutation($parentId: ID!, $childId: ID!) {
+          addSubIssue(input: {
+            issueId: $parentId,
+            subIssueId: $childId
+          }) {
+            parentIssue {
+              id
+              number
+              title
+            }
+            subIssue {
+              id
+              number
+              title
+            }
+          }
+        }
+      `;
+      
+      const mutationResult: any = await graphqlWithAuth(addSubIssueMutation, {
+        parentId,
+        childId
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              relationship: 'native_sub_issue',
+              parent: {
+                number: parentIssueNumber,
+                title: parentTitle,
+              },
+              child: {
+                number: childIssueNumber,
+                title: childTitle,
+              },
+              result: mutationResult.addSubIssue
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      // If the beta API fails, try the convertProjectCardNoteToIssue approach
+      // or fall back to our enhanced linking approach
+      console.error('Beta API failed:', error.message);
+      
+      // If beta API is not available, use our enhanced approach
+      if (error.message.includes('Field \'addSubIssue\' doesn\'t exist') || 
+          error.message.includes('Unknown field')) {
+        
+        // Fall back to our enhanced linking with task lists
+        return await this.linkIssues({
+          owner,
+          repo,
+          parentIssueNumber,
+          childIssueNumber,
+          linkType: 'tracks'
+        });
+      }
+      
+      throw error;
+    }
   }
 
   private async getIssueHierarchy(args: any) {

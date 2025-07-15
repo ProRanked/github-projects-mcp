@@ -197,6 +197,17 @@ Parameters:
 - `repo` (required): Repository name
 - `issueNumber` (required): Issue number to get hierarchy for
 
+##### add_sub_issue
+Add a native sub-issue relationship using GitHub beta API (creates parent-child relationship visible in GitHub's UI).
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `parentIssueNumber` (required): Parent issue number
+- `childIssueNumber` (required): Child issue number to add as sub-issue
+
+Note: This uses GitHub's beta API. If not available, it falls back to task list approach.
+
 ## Integration with Claude Desktop
 
 Add to your Claude Desktop configuration file:
@@ -337,7 +348,18 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-11. Update an issue:
+11. Add native sub-issue relationship (beta):
+   ```
+   Tool: add_sub_issue
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "parentIssueNumber": 100,
+     "childIssueNumber": 101
+   }
+   ```
+
+12. Update an issue:
    ```
    Tool: update_issue
    Arguments: {
@@ -349,7 +371,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-12. List open issues with a specific label:
+13. List open issues with a specific label:
    ```
    Tool: list_issues
    Arguments: {
@@ -360,7 +382,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-13. Add an issue to a project:
+14. Add an issue to a project:
    ```
    Tool: create_project_item
    Arguments: {
