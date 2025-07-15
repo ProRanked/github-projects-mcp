@@ -15,11 +15,14 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 
+// Trim any whitespace that might have been introduced
+const cleanToken = GITHUB_TOKEN.trim();
+
 // GitHub supports both 'token' (classic) and 'Bearer' (fine-grained) formats
-// If the token starts with 'github_pat_' it's a fine-grained token, otherwise classic
-const authHeader = GITHUB_TOKEN.startsWith('github_pat_') 
-  ? `Bearer ${GITHUB_TOKEN}`
-  : `token ${GITHUB_TOKEN}`;
+// Fine-grained PATs start with 'github_pat_' and use Bearer auth
+const authHeader = cleanToken.startsWith('github_pat_') 
+  ? `Bearer ${cleanToken}`
+  : `token ${cleanToken}`;
 
 const graphqlWithAuth = graphql.defaults({
   headers: {
@@ -209,9 +212,21 @@ class GitHubProjectsServer {
       } catch (error) {
         if (error instanceof McpError) throw error;
         
+        // Provide more detailed error information
+        let errorMessage = 'GitHub API error: ';
+        if (error instanceof Error) {
+          errorMessage += error.message;
+          // Check for common auth errors
+          if (error.message.includes('Bad credentials')) {
+            errorMessage += '. Please check that your GitHub token is valid and has the required permissions (repo, project, read:org).';
+          }
+        } else {
+          errorMessage += String(error);
+        }
+        
         throw new McpError(
           ErrorCode.InternalError,
-          `GitHub API error: ${error instanceof Error ? error.message : String(error)}`
+          errorMessage
         );
       }
     });
