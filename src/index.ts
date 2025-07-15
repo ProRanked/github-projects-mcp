@@ -1169,7 +1169,8 @@ class GitHubProjectsServer {
     const issueId = issueResult.repository?.issue?.id;
 
     if (!issueId) {
-      throw new McpError(ErrorCode.InvalidRequest, 'Issue not found');
+      console.error('Issue query result:', JSON.stringify(issueResult, null, 2));
+      throw new McpError(ErrorCode.InvalidRequest, `Issue #${issueNumber} not found in ${owner}/${repo}`);
     }
 
     // Build update input dynamically
