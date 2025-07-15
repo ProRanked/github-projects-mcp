@@ -409,6 +409,32 @@ class GitHubProjectsServer {
           },
         },
         {
+          name: 'set_parent',
+          description: 'Set or update the parent of an issue (simpler alternative to link_issues)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              owner: {
+                type: 'string',
+                description: 'Repository owner',
+              },
+              repo: {
+                type: 'string',
+                description: 'Repository name',
+              },
+              issueNumber: {
+                type: 'number',
+                description: 'Issue number to set parent for',
+              },
+              parentIssueNumber: {
+                type: 'number',
+                description: 'Parent issue number (e.g., Epic or Feature)',
+              },
+            },
+            required: ['owner', 'repo', 'issueNumber', 'parentIssueNumber'],
+          },
+        },
+        {
           name: 'get_issue_hierarchy',
           description: 'Get the full hierarchy of an issue (parents and children)',
           inputSchema: {
@@ -462,6 +488,8 @@ class GitHubProjectsServer {
             return await this.ensureLabels(args);
           case 'link_issues':
             return await this.linkIssues(args);
+          case 'set_parent':
+            return await this.setParent(args);
           case 'get_issue_hierarchy':
             return await this.getIssueHierarchy(args);
           default:
@@ -1175,6 +1203,10 @@ class GitHubProjectsServer {
 
     // Build update input dynamically
     const updateInput: any = { id: issueId };
+    
+    // Debug logging to verify the input structure
+    console.error('Building updateInput with issueId:', issueId);
+    
     if (title !== undefined) updateInput.title = title;
     if (body !== undefined) updateInput.body = body;
     if (state !== undefined) updateInput.state = state.toUpperCase();
@@ -1235,6 +1267,9 @@ class GitHubProjectsServer {
         updateInput.milestoneId = milestoneResult.repository?.milestone?.id;
       }
     }
+
+    // Debug log the final updateInput before mutation
+    console.error('Final updateInput:', JSON.stringify(updateInput, null, 2));
 
     const mutation = `
       mutation($input: UpdateIssueInput!) {
@@ -1669,6 +1704,22 @@ class GitHubProjectsServer {
         },
       ],
     };
+  }
+
+  private async setParent(args: any) {
+    let { owner, repo, issueNumber, parentIssueNumber } = args;
+    
+    // Ensure owner is lowercase
+    owner = owner.toLowerCase();
+    
+    // Simply call linkIssues with the child and parent swapped to match expected behavior
+    return await this.linkIssues({
+      owner,
+      repo,
+      parentIssueNumber,
+      childIssueNumber: issueNumber,
+      linkType: 'tracks'
+    });
   }
 
   private async getIssueHierarchy(args: any) {

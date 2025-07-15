@@ -180,6 +180,15 @@ Parameters:
 - `childIssueNumber` (required): Child issue number to link
 - `linkType` (optional): Relationship type - "tracks" (default), "blocks", or "related"
 
+##### set_parent
+Set or update the parent of an issue (simpler alternative to link_issues).
+
+Parameters:
+- `owner` (required): Repository owner
+- `repo` (required): Repository name
+- `issueNumber` (required): Issue number to set parent for
+- `parentIssueNumber` (required): Parent issue number (e.g., Epic or Feature)
+
 ##### get_issue_hierarchy
 Get the complete hierarchy of an issue showing all parents and children.
 
@@ -307,7 +316,18 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-9. View issue hierarchy:
+9. Set parent for an issue (simpler syntax):
+   ```
+   Tool: set_parent
+   Arguments: {
+     "owner": "octocat",
+     "repo": "hello-world",
+     "issueNumber": 101,
+     "parentIssueNumber": 100
+   }
+   ```
+
+10. View issue hierarchy:
    ```
    Tool: get_issue_hierarchy
    Arguments: {
@@ -317,7 +337,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-10. Update an issue:
+11. Update an issue:
    ```
    Tool: update_issue
    Arguments: {
@@ -329,7 +349,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-11. List open issues with a specific label:
+12. List open issues with a specific label:
    ```
    Tool: list_issues
    Arguments: {
@@ -340,7 +360,7 @@ Create your token at: https://github.com/settings/tokens
    }
    ```
 
-12. Add an issue to a project:
+13. Add an issue to a project:
    ```
    Tool: create_project_item
    Arguments: {
