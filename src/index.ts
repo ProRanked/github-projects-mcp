@@ -1587,13 +1587,14 @@ class GitHubProjectsServer {
       ? `Blocks #${childIssueNumber}`
       : `Related to #${childIssueNumber}`;
     
-    // Get parent issue ID
+    // Get parent issue ID and body
     const parentQuery = `
       query($owner: String!, $repo: String!, $number: Int!) {
         repository(owner: $owner, name: $repo) {
           issue(number: $number) {
             id
             title
+            body
             labels(first: 10) {
               nodes {
                 name
@@ -1606,6 +1607,7 @@ class GitHubProjectsServer {
     const parentResult: any = await graphqlWithAuth(parentQuery, { owner, repo, number: parentIssueNumber });
     const parentIssueId = parentResult.repository?.issue?.id;
     const parentIssueTitle = parentResult.repository?.issue?.title;
+    const parentIssueBody = parentResult.repository?.issue?.body || '';
     
     if (!parentIssueId) {
       throw new McpError(ErrorCode.InvalidRequest, 'Parent issue not found');
@@ -1682,6 +1684,32 @@ class GitHubProjectsServer {
       await graphqlWithAuth(updateBodyMutation, {
         issueId: childIssueId,
         body: updatedBody,
+      });
+      
+      // Also update parent issue body to include task list for native GitHub relationships
+      const childTaskItem = `- [ ] #${childIssueNumber}`;
+      let updatedParentBody = parentIssueBody;
+      
+      // Check if there's already a "Child Issues" or "Tracks" section
+      const tracksSectionRegex = /## (?:Child Issues|Tracks|Sub-tasks)\n((?:- \[[ x]\] #\d+.*\n)*)/i;
+      const match = updatedParentBody.match(tracksSectionRegex);
+      
+      if (match) {
+        // Add to existing section if not already there
+        if (!match[1].includes(`#${childIssueNumber}`)) {
+          const newSection = match[0] + childTaskItem + '\n';
+          updatedParentBody = updatedParentBody.replace(match[0], newSection);
+        }
+      } else {
+        // Add new section at the end
+        const newSection = `\n\n## Sub-tasks\n${childTaskItem}\n`;
+        updatedParentBody = updatedParentBody + newSection;
+      }
+      
+      // Update parent issue body
+      await graphqlWithAuth(updateBodyMutation, {
+        issueId: parentIssueId,
+        body: updatedParentBody,
       });
     }
     
